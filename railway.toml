@@ -1,0 +1,12 @@
+# Railway Backend Configuration
+# Generated for automatic deployment on Railway.app
+
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "cd backend && npm start"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+healthcheckPath = "/health"
+healthcheckTimeout = 100
