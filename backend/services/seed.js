@@ -265,19 +265,9 @@ async function seedPrescriptions(userMap) {
 }
 
 async function seedInitialData() {
-  await seedDemoUsers();
-  const users = await User.find({ email: { $in: demoUsers.map((user) => user.email) } });
-  const userMap = users.reduce((accumulator, user) => {
-    accumulator[user.role] = user;
-    return accumulator;
-  }, {});
-
+  // Only seed support programs for education hub.
+  // Demo users removed: users create accounts with their own email/password.
   await seedSupportPrograms();
-  await seedAppointments(userMap);
-  await seedBloodDonors();
-  await seedOrganDonors();
-  await seedMedicines();
-  await seedPrescriptions(userMap);
 }
 
 module.exports = { seedInitialData };
