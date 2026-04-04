@@ -33,19 +33,24 @@ async function request(path, { method = 'GET', body, auth = true, ...options } =
     if (token) headers['Authorization'] = `Bearer ${token}`
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers,
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  })
+  try {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method,
+      headers,
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    })
 
-  if (!res.ok) {
-    const text = await res.text()
-    try { throw new Error(JSON.parse(text).message || `API error ${res.status}`) }
-    catch { throw new Error(`API error ${res.status}: ${text}`) }
+    if (!res.ok) {
+      const text = await res.text()
+      try { throw new Error(JSON.parse(text).message || `API error ${res.status}`) }
+      catch { throw new Error(`API error ${res.status}: ${text}`) }
+    }
+
+    return res.status === 204 ? null : res.json()
+  } catch (err) {
+    console.error(`[API] ${method} ${path} failed:`, err.message)
+    throw err
   }
-
-  return res.status === 204 ? null : res.json()
 }
 
 /* ─── Authentication ────────────────────────────────────── */

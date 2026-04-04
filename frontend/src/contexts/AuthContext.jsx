@@ -56,8 +56,9 @@ export function AuthProvider({ children }) {
             loginAt: null,
           })
         }
-      } catch {
+      } catch (err) {
         // Token invalid or server offline – clear stale token
+        console.log('[Auth] Rehydration failed (expected if logged out):', err.message)
         removeToken()
       } finally {
         setLoading(false)
