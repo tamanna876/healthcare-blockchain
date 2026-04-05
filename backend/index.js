@@ -30,7 +30,8 @@ const allowedOrigins = [
 app.use(cors({
   origin(origin, callback) {
     // Allow same-origin/server requests and trusted local frontend origins.
-    if (!origin || allowedOrigins.includes(origin)) {
+    const isVercelPreview = typeof origin === 'string' && origin.endsWith('.vercel.app');
+    if (!origin || allowedOrigins.includes(origin) || isVercelPreview) {
       return callback(null, true);
     }
     return callback(new Error(`CORS blocked for origin: ${origin}`));
@@ -39,6 +40,14 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+app.get('/', (_req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'Healthcare Blockchain Backend',
+    docs: '/health',
+  });
+});
 
 /* ─── Health check ───────────────────────────────────── */
 
