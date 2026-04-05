@@ -205,3 +205,5 @@ npm test
 ## Disclaimer
 
 This project is intended for academic demonstration and system design presentation. It is not certified clinical software and should not be used as a source of medical advice.
+
+Deployment note: this repository may receive no-op commits to trigger hosting redeploys.

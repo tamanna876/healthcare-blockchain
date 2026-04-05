@@ -1,90 +1,122 @@
-const express = require("express");
-const cors = require("cors");
-const multer = require("multer");
-const fs = require("fs");
-const { ethers } = require("ethers");
-const { create } = require("ipfs-http-client");
+require('dotenv').config();
+
+const express = require('express');
+const cors = require('cors');
+const multer = require('multer');
+const fs = require('fs');
+const { ethers } = require('ethers');
+const { create } = require('ipfs-http-client');
 
 const app = express();
 
-app.use(cors());
-app.use(express.json());
+const PORT = Number(process.env.PORT) || 5000;
+const RPC_URL = process.env.RPC_URL;
+const PRIVATE_KEY = process.env.PRIVATE_KEY;
+const CONTRACT_ADDRESS = process.env.MEDICAL_RECORDS_ADDRESS;
 
-/* -------------------------------
-   File Upload Setup
---------------------------------*/
+const upload = multer({ dest: 'uploads/' });
 
-const upload = multer({ dest: "uploads/" });
-
-/* -------------------------------
-   IPFS Connection
---------------------------------*/
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || '*',
+    credentials: true,
+  })
+);
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
 
 const ipfs = create({
-  host: "ipfs.infura.io",
-  port: 5001,
-  protocol: "https"
+  host: process.env.IPFS_HOST || 'ipfs.infura.io',
+  port: Number(process.env.IPFS_PORT || 5001),
+  protocol: process.env.IPFS_PROTOCOL || 'https',
 });
-
-/* -------------------------------
-   Blockchain Connection
---------------------------------*/
-
-const provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
-
-const privateKey =
-  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-
-const wallet = new ethers.Wallet(privateKey, provider);
-
-const contractAddress = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0";
 
 const abi = [
   {
     inputs: [
-      { internalType: "address", name: "patient", type: "address" },
-      { internalType: "string", name: "ipfsHash", type: "string" }
+      { internalType: 'address', name: 'patient', type: 'address' },
+      { internalType: 'string', name: 'ipfsHash', type: 'string' },
     ],
-    name: "addRecord",
+    name: 'addRecord',
     outputs: [],
-    stateMutability: "nonpayable",
-    type: "function"
+    stateMutability: 'nonpayable',
+    type: 'function',
   },
   {
-    inputs: [{ internalType: "address", name: "patient", type: "address" }],
-    name: "getRecords",
+    inputs: [{ internalType: 'address', name: 'patient', type: 'address' }],
+    name: 'getRecords',
     outputs: [
       {
         components: [
-          { internalType: "string", name: "ipfsHash", type: "string" },
-          { internalType: "address", name: "doctor", type: "address" },
-          { internalType: "uint256", name: "timestamp", type: "uint256" }
+          { internalType: 'string', name: 'ipfsHash', type: 'string' },
+          { internalType: 'address', name: 'doctor', type: 'address' },
+          { internalType: 'uint256', name: 'timestamp', type: 'uint256' },
         ],
-        internalType: "struct MedicalRecords.Record[]",
-        name: "",
-        type: "tuple[]"
-      }
+        internalType: 'struct MedicalRecords.Record[]',
+        name: '',
+        type: 'tuple[]',
+      },
     ],
-    stateMutability: "view",
-    type: "function"
-  }
+    stateMutability: 'view',
+    type: 'function',
+  },
 ];
 
-const contract = new ethers.Contract(contractAddress, abi, wallet);
+const blockchain = {
+  enabled: false,
+  reason: 'Blockchain not configured',
+  contract: null,
+};
 
-/* -------------------------------
-   Routes
---------------------------------*/
+async function initializeBlockchain() {
+  if (!RPC_URL || !PRIVATE_KEY || !CONTRACT_ADDRESS) {
+    blockchain.enabled = false;
+    blockchain.reason = 'Missing RPC_URL, PRIVATE_KEY, or MEDICAL_RECORDS_ADDRESS';
+    return;
+  }
 
-app.get("/", (req, res) => {
-  res.send("Healthcare Blockchain Backend Running");
+  try {
+    const provider = new ethers.JsonRpcProvider(RPC_URL);
+    await provider.getBlockNumber();
+    const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, wallet);
+
+    blockchain.enabled = true;
+    blockchain.reason = 'Connected';
+    blockchain.contract = contract;
+  } catch (error) {
+    blockchain.enabled = false;
+    blockchain.reason = `RPC unavailable: ${error.message}`;
+    blockchain.contract = null;
+  }
+}
+
+function requireBlockchain(req, res, next) {
+  if (!blockchain.enabled || !blockchain.contract) {
+    return res.status(503).json({
+      error: 'Blockchain service unavailable',
+      details: blockchain.reason,
+    });
+  }
+  return next();
+}
+
+app.get('/', (_req, res) => {
+  res.send('Healthcare Blockchain Backend Running');
 });
 
-/* -------------------------------
-   Upload Page (Browser Test)
---------------------------------*/
+app.get('/health', (_req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'Healthcare Blockchain Backend',
+    blockchain: {
+      enabled: blockchain.enabled,
+      reason: blockchain.reason,
+    },
+  });
+});
 
-app.get("/upload-page", (req, res) => {
+app.get('/upload-page', (_req, res) => {
   res.send(`
     <h2>Upload Medical File</h2>
     <form action="/upload" method="post" enctype="multipart/form-data">
@@ -94,82 +126,80 @@ app.get("/upload-page", (req, res) => {
   `);
 });
 
-/* -------------------------------
-   Upload File to IPFS
---------------------------------*/
+app.post('/upload', upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
 
-app.post("/upload", upload.single("file"), async (req, res) => {
   try {
-
-    if (!req.file) {
-      return res.status(400).json({
-        error: "No file uploaded"
-      });
-    }
-
     const fileBuffer = fs.readFileSync(req.file.path);
-
     const result = await ipfs.add(fileBuffer);
 
-    res.json({
-      message: "File uploaded to IPFS",
-      ipfsHash: result.path
+    return res.status(200).json({
+      message: 'File uploaded to IPFS',
+      ipfsHash: result.path,
     });
-
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
+  } finally {
+    fs.unlink(req.file.path, () => {});
   }
 });
 
-/* -------------------------------
-   Add Record to Blockchain
---------------------------------*/
-
-app.post("/addRecord", async (req, res) => {
+app.post('/addRecord', requireBlockchain, async (req, res) => {
   try {
-
     const { patient, ipfsHash } = req.body;
+    if (!patient || !ipfsHash) {
+      return res.status(400).json({ error: 'patient and ipfsHash are required' });
+    }
 
-    const tx = await contract.addRecord(patient, ipfsHash);
-
+    const tx = await blockchain.contract.addRecord(patient, ipfsHash);
     await tx.wait();
 
-    res.json({
-      message: "Medical record added successfully",
-      transactionHash: tx.hash
+    return res.status(200).json({
+      message: 'Medical record added successfully',
+      transactionHash: tx.hash,
     });
-
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
   }
 });
 
-/* -------------------------------
-   Get Records
---------------------------------*/
-
-app.get("/records/:patient", async (req, res) => {
+app.get('/records/:patient', requireBlockchain, async (req, res) => {
   try {
-
-    const records = await contract.getRecords(req.params.patient);
-
-    const formatted = records.map((r) => ({
-      ipfsHash: r.ipfsHash,
-      doctor: r.doctor,
-      timestamp: r.timestamp.toString()
+    const records = await blockchain.contract.getRecords(req.params.patient);
+    const formatted = records.map((record) => ({
+      ipfsHash: record.ipfsHash,
+      doctor: record.doctor,
+      timestamp: record.timestamp.toString(),
     }));
 
-    res.json(formatted);
-
+    return res.status(200).json(formatted);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
   }
 });
 
-/* -------------------------------
-   Start Server
---------------------------------*/
-
-app.listen(5000, () => {
-  console.log("Server running on port 5000");
+app.use((_req, res) => {
+  res.status(404).json({ error: 'Route not found' });
 });
+
+app.use((err, _req, res, _next) => {
+  console.error(err);
+  res.status(err.status || 500).json({ error: err.message || 'Internal Server Error' });
+});
+
+async function start() {
+  await initializeBlockchain();
+  if (blockchain.enabled) {
+    console.log('Blockchain connected');
+  } else {
+    console.warn(`Blockchain disabled: ${blockchain.reason}`);
+  }
+
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+
+start();
