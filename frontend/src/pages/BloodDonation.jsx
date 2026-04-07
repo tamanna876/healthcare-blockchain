@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-hot-toast'
-import { getBloodDonors, saveBloodDonor } from '../services/api.js'
+import {
+  getBloodDonors,
+  saveBloodDonor,
+} from '../services/api.js'
 import Card from '../components/ui/Card.jsx'
 import PageHeader from '../components/ui/PageHeader.jsx'
+import TransactionStatusCard from '../components/tx/TransactionStatusCard.jsx'
+import { useTrackedTransaction } from '../hooks/useTrackedTransaction.js'
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
 
@@ -13,6 +18,8 @@ export default function BloodDonation() {
   const [donors, setDonors] = useState([])
   const [notice, setNotice] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const { transaction, executeTransaction, markTransactionFailed } = useTrackedTransaction()
 
   useEffect(() => {
     async function loadDonors() {
@@ -28,12 +35,38 @@ export default function BloodDonation() {
 
   const handleRegister = async (event) => {
     event.preventDefault()
-    const record = await saveBloodDonor({ name, bloodGroup, location })
-    setDonors((previous) => [record, ...previous])
-    setNotice({ type: 'success', message: 'Donor registered successfully.' })
-    toast.success('Blood donor registered')
-    setName('')
-    setLocation('')
+    setSubmitting(true)
+    setNotice(null)
+
+    try {
+      const payload = { name, bloodGroup, location }
+      const record = await executeTransaction({
+        txType: 'blood-donor-register',
+        payload,
+        submit: saveBloodDonor,
+        getTxHash: (response) => response?.txHash || response?.transactionHash || null,
+      })
+      setDonors((previous) => [record, ...previous])
+      setNotice({ type: 'success', message: 'Donor registered successfully.' })
+      toast.success('Blood donor registered')
+
+      setName('')
+      setLocation('')
+    } catch (error) {
+      setNotice({ type: 'error', message: error.message || 'Failed to register donor.' })
+      toast.error(error.message || 'Failed to register donor.')
+      markTransactionFailed(error.message || 'Registration failed')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleRetry = async () => {
+    if (!transaction?.payload) return
+    setName(transaction.payload.name)
+    setBloodGroup(transaction.payload.bloodGroup)
+    setLocation(transaction.payload.location)
+    await handleRegister({ preventDefault() {} })
   }
 
   const filterOptions = useMemo(
@@ -102,9 +135,10 @@ export default function BloodDonation() {
             ) : null}
             <button
               type="submit"
+              disabled={submitting}
               className="inline-flex w-full items-center justify-center rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-md hover:bg-brand-700"
             >
-              Register donor
+              {submitting ? 'Registering...' : 'Register donor'}
             </button>
           </form>
         </Card>
@@ -167,6 +201,8 @@ export default function BloodDonation() {
           </div>
         </Card>
       </div>
+
+      <TransactionStatusCard transaction={transaction} onRetry={handleRetry} />
     </div>
   )
 }

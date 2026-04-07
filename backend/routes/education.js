@@ -8,6 +8,7 @@ const router = express.Router();
 
 router.get(
   '/support-programs',
+  protect,
   [query('providerType').optional().isIn(['state', 'central', 'who'])],
   async (req, res) => {
     const errors = validationResult(req);

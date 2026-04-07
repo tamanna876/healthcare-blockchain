@@ -10,6 +10,11 @@ import {
   removeToken,
   requestWalletNonce,
   verifyWalletSignature,
+  requestMagicLogin,
+  verifyMagicLogin,
+  loginWithGoogleIdToken,
+  loginWithIdentity,
+  logoutAllSessions,
 } from '../services/api'
 
 const AuthContext = createContext(null)
@@ -132,8 +137,64 @@ export function AuthProvider({ children }) {
     return data
   }, [navigate])
 
-  const logout = useCallback(() => {
-    logoutUser()
+  const requestMagicLoginCode = useCallback(async (payload) => requestMagicLogin(payload), [])
+
+  const verifyMagicLoginCode = useCallback(async ({ email, code }) => {
+    const data = await verifyMagicLogin({ email, code })
+    setAuth({
+      isAuthenticated: true,
+      role: normalizeRole(data.user.role),
+      email: data.user.email,
+      displayName: data.user.displayName,
+      phone: data.user.phone,
+      healthId: data.user.healthId,
+      walletAddress: data.user.walletAddress || null,
+      loginAt: new Date().toISOString(),
+    })
+    navigate('/dashboard', { replace: true })
+    return data
+  }, [navigate])
+
+  const loginWithIdentityProvider = useCallback(async (payload) => {
+    const data = await loginWithIdentity(payload)
+    setAuth({
+      isAuthenticated: true,
+      role: normalizeRole(data.user.role),
+      email: data.user.email,
+      displayName: data.user.displayName,
+      phone: data.user.phone,
+      healthId: data.user.healthId,
+      walletAddress: data.user.walletAddress || null,
+      loginAt: new Date().toISOString(),
+    })
+    navigate('/dashboard', { replace: true })
+    return data
+  }, [navigate])
+
+  const loginWithGoogleToken = useCallback(async ({ idToken, role }) => {
+    const data = await loginWithGoogleIdToken({ idToken, role })
+    setAuth({
+      isAuthenticated: true,
+      role: normalizeRole(data.user.role),
+      email: data.user.email,
+      displayName: data.user.displayName,
+      phone: data.user.phone,
+      healthId: data.user.healthId,
+      walletAddress: data.user.walletAddress || null,
+      loginAt: new Date().toISOString(),
+    })
+    navigate('/dashboard', { replace: true })
+    return data
+  }, [navigate])
+
+  const logout = useCallback(async () => {
+    await logoutUser()
+    setAuth(initialState)
+    navigate('/login', { replace: true })
+  }, [navigate])
+
+  const logoutAllDevices = useCallback(async () => {
+    await logoutAllSessions()
     setAuth(initialState)
     navigate('/login', { replace: true })
   }, [navigate])
@@ -151,8 +212,36 @@ export function AuthProvider({ children }) {
   }, [auth.role])
 
   const value = useMemo(
-    () => ({ ...auth, loading, login, register, loginWithWallet, logout, hasRole, updateProfile }),
-    [auth, loading, login, register, loginWithWallet, logout, hasRole, updateProfile],
+    () => ({
+      ...auth,
+      loading,
+      login,
+      register,
+      loginWithWallet,
+      requestMagicLoginCode,
+      verifyMagicLoginCode,
+      loginWithIdentityProvider,
+      loginWithGoogleToken,
+      logout,
+      logoutAllDevices,
+      hasRole,
+      updateProfile,
+    }),
+    [
+      auth,
+      loading,
+      login,
+      register,
+      loginWithWallet,
+      requestMagicLoginCode,
+      verifyMagicLoginCode,
+      loginWithIdentityProvider,
+      loginWithGoogleToken,
+      logout,
+      logoutAllDevices,
+      hasRole,
+      updateProfile,
+    ],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -4,13 +4,15 @@ const BloodDonor = require('../models/BloodDonor');
 const OrganDonor = require('../models/OrganDonor');
 const { protect, restrictTo } = require('../middleware/auth');
 const { getBlockchainClients } = require('../services/blockchain');
+const { recordAudit } = require('../services/audit');
+const notificationService = require('../services/notifications');
 
 const router = express.Router();
 
 /* ─────────────── BLOOD DONORS ─────────────── */
 
 // GET /api/donors/blood
-router.get('/blood', async (req, res) => {
+router.get('/blood', protect, async (req, res) => {
   try {
     const { bloodGroup, location } = req.query;
     const filter = {};
@@ -64,6 +66,22 @@ router.post(
         txHash,
       });
 
+      await recordAudit({
+        user: req.user._id,
+        action: 'BLOOD_DONOR_REGISTERED',
+        entityType: 'bloodDonor',
+        entityId: String(donor._id),
+        metadata: { bloodGroup, location, txHash },
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent') || null,
+      });
+
+      await notificationService.notifyBloodDonors(bloodGroup, location, {
+        bloodGroup,
+        location,
+        urgencyLevel: 3,
+      });
+
       res.status(201).json({ donor });
     } catch (err) {
       res.status(500).json({ message: err.message });
@@ -74,7 +92,7 @@ router.post(
 /* ─────────────── ORGAN DONORS ─────────────── */
 
 // GET /api/donors/organ
-router.get('/organ', async (req, res) => {
+router.get('/organ', protect, async (req, res) => {
   try {
     const { organType, bloodGroup } = req.query;
     const filter = {};
@@ -128,6 +146,18 @@ router.post(
         email: req.user.email,
         txHash,
       });
+
+      await recordAudit({
+        user: req.user._id,
+        action: 'ORGAN_DONOR_REGISTERED',
+        entityType: 'organDonor',
+        entityId: String(donor._id),
+        metadata: { organType, bloodGroup, location, txHash },
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent') || null,
+      });
+
+      await notificationService.notifyOrganDonors(organType, bloodGroup, location, 7);
 
       res.status(201).json({ donor });
     } catch (err) {

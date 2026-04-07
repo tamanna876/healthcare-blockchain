@@ -29,6 +29,19 @@ const userSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    authProviders: {
+      type: [String],
+      default: ['email'],
+    },
+    providerId: {
+      type: String,
+      trim: true,
+      sparse: true,
+    },
+    emailVerified: {
+      type: Boolean,
+      default: false,
+    },
     healthId: {
       type: String,
     },
@@ -46,9 +59,29 @@ const userSchema = new mongoose.Schema(
     walletLastLoginAt: {
       type: Date,
     },
+    lastLoginAt: {
+      type: Date,
+    },
+    refreshTokenHash: {
+      type: String,
+      select: false,
+    },
+    refreshTokenExpiresAt: {
+      type: Date,
+      select: false,
+    },
     isActive: {
       type: Boolean,
       default: true,
+    },
+    notificationPreferences: {
+      email: { type: Boolean, default: true },
+      sms: { type: Boolean, default: false },
+      inApp: { type: Boolean, default: true },
+      bloodDonationAlerts: { type: Boolean, default: true },
+      organDonationAlerts: { type: Boolean, default: true },
+      emergencyAlerts: { type: Boolean, default: true },
+      certificateAlerts: { type: Boolean, default: true },
     },
   },
   { timestamps: true }
@@ -69,6 +102,9 @@ userSchema.pre('save', function () {
   }
   if (!this.displayName) {
     this.displayName = this.email.split('@')[0];
+  }
+  if (!Array.isArray(this.authProviders) || this.authProviders.length === 0) {
+    this.authProviders = ['email'];
   }
 });
 

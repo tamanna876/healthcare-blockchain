@@ -31,6 +31,13 @@ const ipfs = create({
   protocol: process.env.IPFS_PROTOCOL || 'https',
 });
 
+// Import advanced features
+const tokenRoutes = require('./routes/tokens');
+const certificateRoutes = require('./routes/certificates');
+const approvalRoutes = require('./routes/approvals');
+const encryptionService = require('./services/encryption');
+const notificationService = require('./services/notifications');
+
 const abi = [
   {
     inputs: [
@@ -179,6 +186,126 @@ app.get('/records/:patient', requireBlockchain, async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 });
+
+// ===== NEW ADVANCED FEATURES =====
+
+// Token Management Routes
+app.use('/api/tokens', tokenRoutes);
+
+// NFT Certificate Routes
+app.use('/api/certificates', certificateRoutes);
+
+// Multi-Signature Approval Routes
+app.use('/api/approvals', approvalRoutes);
+
+// Encryption/Decryption endpoint
+app.post('/api/encrypt', (req, res) => {
+  try {
+    const { data, key } = req.body;
+    const encrypted = encryptionService.encrypt(data, key);
+    res.json({
+      message: 'Data encrypted successfully',
+      encrypted
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/decrypt', (req, res) => {
+  try {
+    const { encryptedData, key } = req.body;
+    const decrypted = encryptionService.decrypt(encryptedData, key);
+    res.json({
+      message: 'Data decrypted successfully',
+      decrypted
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Notification subscription
+app.post('/api/notifications/subscribe', (req, res) => {
+  try {
+    const { walletAddress, preferences } = req.body;
+    const result = notificationService.subscribe(walletAddress, preferences);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get user notifications
+app.get('/api/notifications/user/:address', (req, res) => {
+  try {
+    const { address } = req.params;
+    const unreadOnly = req.query.unreadOnly === 'true';
+    const notifications = notificationService.getUserNotifications(address, unreadOnly);
+    res.json({
+      address,
+      total: notifications.length,
+      notifications
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Mark notification as read
+app.post('/api/notifications/:notificationId/read', (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const success = notificationService.markAsRead(parseInt(notificationId));
+    res.json({
+      success,
+      message: success ? 'Notification marked as read' : 'Notification not found'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Simulate blood donation request with notifications
+app.post('/api/donations/blood/request', async (req, res) => {
+  try {
+    const { bloodGroup, location, urgencyLevel } = req.body;
+    const notifications = await notificationService.notifyBloodDonors(
+      bloodGroup,
+      location,
+      { bloodGroup, location, urgencyLevel }
+    );
+    res.json({
+      message: 'Blood donation request created and donors notified',
+      notificationsSent: notifications.length,
+      notifications
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Simulate organ donation request with notifications
+app.post('/api/donations/organ/request', async (req, res) => {
+  try {
+    const { organ, bloodGroup, location, urgency } = req.body;
+    const notifications = await notificationService.notifyOrganDonors(
+      organ,
+      bloodGroup,
+      location,
+      urgency
+    );
+    res.json({
+      message: 'Organ donation request created and donors notified',
+      notificationsSent: notifications.length,
+      notifications
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===== END NEW ADVANCED FEATURES =====
 
 app.use((_req, res) => {
   res.status(404).json({ error: 'Route not found' });

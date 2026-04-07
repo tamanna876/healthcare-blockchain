@@ -14,6 +14,7 @@ import {
   UsersIcon,
 } from '@heroicons/react/24/outline'
 import { useAuth } from '../../contexts/AuthContext.jsx'
+import { canAccessInnovation } from '../../constants/innovationAccess.js'
 
 const baseItems = [
   { name: 'Dashboard', to: '/dashboard', icon: Squares2X2Icon },
@@ -61,7 +62,13 @@ export default function Sidebar({ mobile = false }) {
   const location = useLocation()
   const { logout, role, email } = useAuth()
 
-  const navItems = [...baseItems, ...(roleItems[role] || [])]
+  const navItems = [
+    ...baseItems,
+    ...(canAccessInnovation(role)
+      ? [{ name: 'Innovation Hub', to: '/innovation-hub', icon: SparklesIcon }]
+      : []),
+    ...(roleItems[role] || []),
+  ]
 
   return (
     <aside className={`${mobile ? 'block' : 'hidden lg:block'} w-72 shrink-0 border-r border-white/70 bg-white/70 backdrop-blur-xl`}>

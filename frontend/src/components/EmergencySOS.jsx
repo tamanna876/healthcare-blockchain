@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext.jsx'
-import { getMedicalRecords } from '../services/api.js'
+import { createEmergencySos, getMedicalRecords } from '../services/api.js'
 
 export default function EmergencySOS() {
   const { email, role } = useAuth()
@@ -18,6 +18,8 @@ export default function EmergencySOS() {
     medications: 'See prescription records',
     conditions: 'See medical records'
   })
+  const [sendingAlert, setSendingAlert] = useState(false)
+  const [lastSosResult, setLastSosResult] = useState(null)
 
   useEffect(() => {
     async function loadMedicalInfo() {
@@ -57,26 +59,26 @@ export default function EmergencySOS() {
     window.open(`tel:${number}`)
   }
 
-  const sendEmergencyAlert = () => {
-    const alertMessage = `
-🚨 EMERGENCY ALERT 🚨
-
-Medical Information:
-- Blood Type: ${medicalInfo.bloodType}
-- Allergies: ${medicalInfo.allergies}
-- Current Medications: ${medicalInfo.medications}
-- Medical Conditions: ${medicalInfo.conditions}
-
-Location: ${userLocation ? `${userLocation.lat}, ${userLocation.lng}` : 'Location not available'}
-
-Emergency contacts have been notified. Help is on the way.
-    `.trim()
-
-    // In a real app, this would send SMS/email to emergency contacts
-    alert('Emergency alert sent to your emergency contacts!\n\n' + alertMessage)
-
-    // Also call emergency services
-    handleEmergencyCall('911')
+  const sendEmergencyAlert = async () => {
+    setSendingAlert(true)
+    try {
+      const payload = {
+        message: `Emergency alert from ${email || 'patient'}: immediate assistance required`,
+        type: 'blood',
+        urgency: 'critical',
+        location: userLocation ? `${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}` : 'location unavailable',
+        latitude: userLocation?.lat,
+        longitude: userLocation?.lng,
+      }
+      const response = await createEmergencySos(payload)
+      setLastSosResult(response)
+      alert('Emergency alert sent. Nearby donors and escalation ladder notified.')
+      handleEmergencyCall('911')
+    } catch (error) {
+      alert(`Unable to send SOS: ${error.message}`)
+    } finally {
+      setSendingAlert(false)
+    }
   }
 
   // Only show for patients and doctors
@@ -132,11 +134,18 @@ Emergency contacts have been notified. Help is on the way.
               {/* Main Emergency Button */}
               <button
                 onClick={sendEmergencyAlert}
+                disabled={sendingAlert}
                 className="w-full bg-red-600 hover:bg-red-700 text-white py-4 px-6 rounded-xl font-bold text-lg shadow-lg transition-colors flex items-center justify-center gap-3"
               >
                 <span className="text-2xl">🚨</span>
-                CALL EMERGENCY SERVICES
+                {sendingAlert ? 'SENDING SOS...' : 'CALL EMERGENCY SERVICES'}
               </button>
+
+              {lastSosResult && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  Escalation: {(lastSosResult.escalationNotified || []).join(' -> ') || 'none'}
+                </div>
+              )}
 
               {/* Quick Actions */}
               <div className="grid grid-cols-2 gap-3">
@@ -195,6 +204,29 @@ Emergency contacts have been notified. Help is on the way.
                   </p>
                 </div>
               </div>
+
+              {lastSosResult?.nearbyDonors?.length > 0 && (
+                <div className="border-t pt-3">
+                  <h4 className="font-semibold text-gray-800 mb-2">Nearby Donor Confidence Map</h4>
+                  <div className="space-y-2 max-h-44 overflow-auto">
+                    {lastSosResult.nearbyDonors.map((donor) => (
+                      <div key={donor.id} className="rounded-lg border border-gray-200 bg-gray-50 p-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-semibold text-gray-800">{donor.name}</span>
+                          <span className="text-gray-600">{donor.distanceKm} km</span>
+                        </div>
+                        <div className="mt-1 h-2 rounded-full bg-gray-200 overflow-hidden">
+                          <div
+                            className="h-full bg-emerald-500"
+                            style={{ width: `${Math.max(8, donor.confidenceScore || 0)}%` }}
+                          />
+                        </div>
+                        <div className="mt-1 text-xs text-gray-600">Confidence score: {donor.confidenceScore || 0}%</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Disclaimer */}
               <div className="border-t pt-3">

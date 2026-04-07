@@ -3,11 +3,12 @@ const { body, validationResult } = require('express-validator');
 const Medicine = require('../models/Medicine');
 const { protect, restrictTo } = require('../middleware/auth');
 const { getBlockchainClients } = require('../services/blockchain');
+const { recordAudit } = require('../services/audit');
 
 const router = express.Router();
 
 // GET /api/medicines – list all registered medicines
-router.get('/', async (req, res) => {
+router.get('/', protect, async (req, res) => {
   try {
     const { name, manufacturer } = req.query;
     const filter = {};
@@ -22,7 +23,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET /api/medicines/verify/:medicineId – verify a medicine on blockchain + DB
-router.get('/verify/:medicineId', async (req, res) => {
+router.get('/verify/:medicineId', protect, async (req, res) => {
   const { medicineId } = req.params;
 
   try {
@@ -100,6 +101,16 @@ router.post(
         isVerified: !!txHash,
       });
 
+      await recordAudit({
+        user: req.user._id,
+        action: 'MEDICINE_REGISTERED',
+        entityType: 'medicine',
+        entityId: medicineId,
+        metadata: { name, manufacturer, batchNumber, txHash },
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent') || null,
+      });
+
       res.status(201).json({ medicine });
     } catch (err) {
       res.status(500).json({ message: err.message });
@@ -116,6 +127,15 @@ router.patch('/:id/recall', protect, restrictTo('admin'), async (req, res) => {
       { returnDocument: 'after' }
     );
     if (!medicine) return res.status(404).json({ message: 'Medicine not found' });
+    await recordAudit({
+      user: req.user._id,
+      action: 'MEDICINE_RECALLED',
+      entityType: 'medicine',
+      entityId: String(medicine._id),
+      metadata: { medicineId: medicine.medicineId },
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent') || null,
+    });
     res.json({ medicine });
   } catch (err) {
     res.status(500).json({ message: err.message });

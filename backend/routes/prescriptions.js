@@ -2,6 +2,7 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const Prescription = require('../models/Prescription');
 const { protect, restrictTo } = require('../middleware/auth');
+const notificationService = require('../services/notifications');
 
 const router = express.Router();
 
@@ -61,6 +62,15 @@ router.post(
         status: req.user.role === 'doctor' ? 'Active' : 'Requested',
         notes,
       });
+
+      notificationService.publishNotification(
+        targetEmail,
+        'PRESCRIPTION_CREATED',
+        'Prescription update',
+        `${medication} prescription is now ${req.user.role === 'doctor' ? 'active' : 'requested'}.`,
+        { medication, dosage, status: prescription.status },
+        'NORMAL'
+      );
       res.status(201).json({ prescription });
     } catch (err) {
       res.status(500).json({ message: err.message });
@@ -84,6 +94,15 @@ router.patch(
         { returnDocument: 'after' }
       );
       if (!prescription) return res.status(404).json({ message: 'Prescription not found' });
+
+      notificationService.publishNotification(
+        prescription.patientEmail,
+        'PRESCRIPTION_STATUS_UPDATED',
+        'Prescription status changed',
+        `Your prescription status is now ${req.body.status}.`,
+        { prescriptionId: String(prescription._id), status: req.body.status },
+        req.body.status === 'Cancelled' ? 'HIGH' : 'NORMAL'
+      );
       res.json({ prescription });
     } catch (err) {
       res.status(500).json({ message: err.message });

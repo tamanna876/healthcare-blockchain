@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'react-hot-toast'
-import { getOrganDonors, saveOrganDonor } from '../services/api.js'
+import {
+  getOrganDonors,
+  saveOrganDonor,
+} from '../services/api.js'
 import Card from '../components/ui/Card.jsx'
 import PageHeader from '../components/ui/PageHeader.jsx'
+import TransactionStatusCard from '../components/tx/TransactionStatusCard.jsx'
+import { useTrackedTransaction } from '../hooks/useTrackedTransaction.js'
 
 const ORGANS = ['Heart', 'Liver', 'Kidney', 'Lung', 'Pancreas', 'Cornea', 'Bone Marrow']
 
@@ -13,6 +18,8 @@ export default function OrganDonation() {
   const [donors, setDonors] = useState([])
   const [notice, setNotice] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const { transaction, executeTransaction, markTransactionFailed } = useTrackedTransaction()
 
   useEffect(() => {
     async function loadDonors() {
@@ -28,12 +35,38 @@ export default function OrganDonation() {
 
   const handleRegister = async (event) => {
     event.preventDefault()
-    const record = await saveOrganDonor({ name, organType, bloodGroup: 'O+', location })
-    setDonors((previous) => [record, ...previous])
-    setNotice({ type: 'success', message: 'Organ donor registered successfully.' })
-    toast.success('Organ donor registered successfully')
-    setName('')
-    setLocation('')
+    setSubmitting(true)
+    setNotice(null)
+
+    try {
+      const payload = { name, organType, bloodGroup: 'O+', location }
+      const record = await executeTransaction({
+        txType: 'organ-donor-register',
+        payload,
+        submit: saveOrganDonor,
+        getTxHash: (response) => response?.txHash || response?.transactionHash || null,
+      })
+      setDonors((previous) => [record, ...previous])
+      setNotice({ type: 'success', message: 'Organ donor registered successfully.' })
+      toast.success('Organ donor registered successfully')
+
+      setName('')
+      setLocation('')
+    } catch (error) {
+      setNotice({ type: 'error', message: error.message || 'Failed to register organ donor.' })
+      toast.error(error.message || 'Failed to register organ donor.')
+      markTransactionFailed(error.message || 'Registration failed')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleRetry = async () => {
+    if (!transaction?.payload) return
+    setName(transaction.payload.name)
+    setOrganType(transaction.payload.organType)
+    setLocation(transaction.payload.location)
+    await handleRegister({ preventDefault() {} })
   }
 
   return (
@@ -88,9 +121,10 @@ export default function OrganDonation() {
             ) : null}
             <button
               type="submit"
+              disabled={submitting}
               className="inline-flex w-full items-center justify-center rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-md hover:bg-brand-700"
             >
-              Register donor
+              {submitting ? 'Registering...' : 'Register donor'}
             </button>
           </form>
         </Card>
@@ -136,6 +170,8 @@ export default function OrganDonation() {
           </div>
         </Card>
       </div>
+
+      <TransactionStatusCard transaction={transaction} onRetry={handleRetry} />
     </div>
   )
 }

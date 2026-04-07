@@ -9,6 +9,7 @@
  */
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+let pendingRefreshPromise = null
 
 /* ─── Token helpers ─────────────────────────────────────── */
 
@@ -16,12 +17,65 @@ export function getToken() {
   try { return window.localStorage.getItem('dhts_token') || null } catch { return null }
 }
 
+export function getRefreshToken() {
+  return null
+}
+
 export function setToken(token) {
   window.localStorage.setItem('dhts_token', token)
 }
 
+export function setRefreshToken(refreshToken) {
+  // Refresh token now lives in secure httpOnly cookie.
+  void refreshToken
+}
+
+export function setSessionTokens(token, refreshToken) {
+  if (token) setToken(token)
+  if (refreshToken) setRefreshToken(refreshToken)
+}
+
 export function removeToken() {
   window.localStorage.removeItem('dhts_token')
+}
+
+export function removeRefreshToken() {
+  // Refresh token now lives in secure httpOnly cookie.
+}
+
+export function clearSessionTokens() {
+  removeToken()
+  removeRefreshToken()
+}
+
+async function refreshAccessToken() {
+  if (!pendingRefreshPromise) {
+    pendingRefreshPromise = (async () => {
+      const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      })
+
+      if (!res.ok) {
+        clearSessionTokens()
+        return false
+      }
+
+      const data = await res.json()
+      if (data?.token) {
+        setToken(data.token)
+        return true
+      }
+
+      clearSessionTokens()
+      return false
+    })().finally(() => {
+      pendingRefreshPromise = null
+    })
+  }
+
+  return pendingRefreshPromise
 }
 
 /* ─── Core request helper ───────────────────────────────── */
@@ -37,8 +91,22 @@ async function request(path, { method = 'GET', body, auth = true, ...options } =
     const res = await fetch(`${BASE_URL}${path}`, {
       method,
       headers,
+      credentials: 'include',
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     })
+
+    if (res.status === 401 && auth && !path.startsWith('/api/auth/')) {
+      const refreshed = await refreshAccessToken()
+      if (refreshed) {
+        return request(path, {
+          method,
+          body,
+          auth,
+          ...options,
+          headers: options.headers,
+        })
+      }
+    }
 
     if (!res.ok) {
       const text = await res.text()
@@ -89,12 +157,152 @@ export async function verifyWalletSignature({ walletAddress, signature }) {
   return data
 }
 
-export function logoutUser() { removeToken() }
+export async function requestMagicLogin({ email, role, displayName, phone, provider = 'email' }) {
+  return request('/api/auth/magic/request', {
+    method: 'POST',
+    body: { email, role, displayName, phone, provider },
+    auth: false,
+  })
+}
+
+export async function verifyMagicLogin({ email, code }) {
+  const data = await request('/api/auth/magic/verify', {
+    method: 'POST',
+    body: { email, code },
+    auth: false,
+  })
+  if (data?.token) setToken(data.token)
+  return data
+}
+
+export async function loginWithGoogleIdToken({ idToken, role }) {
+  const data = await request('/api/auth/google', {
+    method: 'POST',
+    body: { idToken, role },
+    auth: false,
+  })
+  if (data?.token) setToken(data.token)
+  return data
+}
+
+export async function loginWithIdentity({ email, provider, providerId, displayName, phone, role, emailVerified = true }) {
+  const data = await request('/api/auth/identity/login', {
+    method: 'POST',
+    body: { email, provider, providerId, displayName, phone, role, emailVerified },
+    auth: false,
+  })
+  if (data?.token) setToken(data.token)
+  return data
+}
+
+export async function logoutUser() {
+  try {
+    await request('/api/auth/logout', { method: 'POST' })
+  } catch {
+    // Logout should always clear local session even when API is unavailable.
+  } finally {
+    clearSessionTokens()
+  }
+}
+
+export async function logoutAllSessions() {
+  try {
+    await request('/api/auth/logout-all', { method: 'POST' })
+  } finally {
+    clearSessionTokens()
+  }
+}
+
+export async function getActiveSessions() {
+  return request('/api/auth/sessions')
+}
+
+export async function revokeSession(sessionId) {
+  return request(`/api/auth/sessions/${encodeURIComponent(sessionId)}/revoke`, { method: 'POST' })
+}
 
 export async function getMe() { return request('/api/auth/me') }
 
+export async function getAuthMethods() { return request('/api/auth/auth-methods') }
+
 export async function updateProfile({ displayName, phone }) {
   return request('/api/auth/profile', { method: 'PUT', body: { displayName, phone } })
+}
+
+export async function getAdminMetrics() {
+  return request('/api/admin/metrics')
+}
+
+export async function getAuditLogs(limit = 25) {
+  return request(`/api/admin/audit-logs?limit=${limit}`)
+}
+
+export async function getObservability() {
+  return request('/api/admin/observability')
+}
+
+export async function getNotificationPreferences() {
+  return request('/api/notifications/preferences')
+}
+
+export async function updateNotificationPreferences(preferences) {
+  return request('/api/notifications/preferences', { method: 'PUT', body: preferences })
+}
+
+export async function getMyNotifications(unreadOnly = false) {
+  const query = unreadOnly ? '?unreadOnly=true' : ''
+  return request(`/api/notifications/me${query}`)
+}
+
+export async function markNotificationRead(notificationId) {
+  return request(`/api/notifications/${encodeURIComponent(notificationId)}/read`, { method: 'POST' })
+}
+
+export async function markAllNotificationsRead(notificationIds = []) {
+  void notificationIds
+  return request('/api/notifications/read-all', { method: 'POST' })
+}
+
+export async function getConsentGrants() {
+  const data = await request('/api/consents/mine')
+  return data?.grants ?? []
+}
+
+export async function createConsentGrant(payload) {
+  const data = await request('/api/consents', { method: 'POST', body: payload })
+  return data?.grant
+}
+
+export async function revokeConsentGrant(id) {
+  const data = await request(`/api/consents/${encodeURIComponent(id)}/revoke`, { method: 'POST' })
+  return data?.grant
+}
+
+export async function extendConsentGrant(id, expiresAt) {
+  const data = await request(`/api/consents/${encodeURIComponent(id)}/extend`, {
+    method: 'POST',
+    body: { expiresAt },
+  })
+  return data?.grant
+}
+
+export async function getTransactionNetwork() {
+  return request('/api/transactions/network')
+}
+
+export async function getTransactionStatus(txHash) {
+  return request(`/api/transactions/${encodeURIComponent(txHash)}/status`)
+}
+
+export async function getGasEstimate(txType, payload = {}) {
+  return request('/api/transactions/estimate-gas', {
+    method: 'POST',
+    body: { txType, ...payload },
+  })
+}
+
+export async function createEmergencySos(payload) {
+  return request('/api/emergency/sos', { method: 'POST', body: payload })
 }
 
 /* ─── Medical Records (IPFS + Blockchain) ───────────────── */
@@ -315,4 +523,93 @@ export async function deleteWomenHealthReminder(id) {
 
 export async function getHealthEducationAnalytics() {
   return request('/api/education/analytics')
+}
+
+/* ─── Innovation APIs ─────────────────────────────────── */
+
+export async function evaluateSmartAccess(payload) {
+  return request('/api/innovation/access-rules/evaluate', { method: 'POST', body: payload })
+}
+
+export async function createVaultShareLink(payload) {
+  return request('/api/innovation/share-links', { method: 'POST', body: payload })
+}
+
+export async function revokeVaultShareLink(id) {
+  return request(`/api/innovation/share-links/${encodeURIComponent(id)}/revoke`, { method: 'POST' })
+}
+
+export async function getClinicalTimeline(patientAddress) {
+  return request(`/api/innovation/timeline/${encodeURIComponent(patientAddress)}`)
+}
+
+export async function getComplianceKpis() {
+  return request('/api/innovation/compliance')
+}
+
+export async function ackLiveAlert(alertId, state, note = '') {
+  return request(`/api/innovation/alerts/${encodeURIComponent(alertId)}/ack`, {
+    method: 'POST',
+    body: { state, note },
+  })
+}
+
+export async function escalateLiveAlert(alertId, reason = '') {
+  return request(`/api/innovation/alerts/${encodeURIComponent(alertId)}/escalate`, {
+    method: 'POST',
+    body: { reason },
+  })
+}
+
+export async function getOfflineStatus() {
+  return request('/api/innovation/offline/status')
+}
+
+export async function getOfflineCache(patientAddress) {
+  return request(`/api/innovation/offline/cache/${encodeURIComponent(patientAddress)}`)
+}
+
+export async function queueOfflineAction(actionType, payload = {}) {
+  return request('/api/innovation/offline/queue', {
+    method: 'POST',
+    body: { actionType, payload },
+  })
+}
+
+export async function syncOfflineActions() {
+  return request('/api/innovation/offline/sync', { method: 'POST' })
+}
+
+export async function signPrescriptionChain(id) {
+  return request(`/api/innovation/prescriptions/${encodeURIComponent(id)}/sign`, { method: 'POST' })
+}
+
+export async function verifyDispenseChain(id) {
+  return request(`/api/innovation/prescriptions/${encodeURIComponent(id)}/verify-dispense`, { method: 'POST' })
+}
+
+export async function getEmergencyFacilities(lat, lng) {
+  const params = new URLSearchParams()
+  if (lat !== undefined && lat !== null) params.set('lat', String(lat))
+  if (lng !== undefined && lng !== null) params.set('lng', String(lng))
+  const query = params.toString()
+  return request(`/api/innovation/emergency/facilities${query ? `?${query}` : ''}`)
+}
+
+export async function runAdvancedSearch(q, role) {
+  const params = new URLSearchParams({ q })
+  if (role) params.set('role', role)
+  return request(`/api/innovation/search?${params.toString()}`)
+}
+
+export async function saveAdvancedFilterView(payload) {
+  return request('/api/innovation/search/saved-filters', { method: 'POST', body: payload })
+}
+
+export async function getAdvancedFilterViews() {
+  return request('/api/innovation/search/saved-filters')
+}
+
+export async function getTrustRecords(patientAddress, context = 'normal') {
+  return request(`/api/innovation/trust/records/${encodeURIComponent(patientAddress)}?context=${encodeURIComponent(context)}`)
 }

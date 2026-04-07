@@ -15,6 +15,8 @@ const bloodDonorSchema = new mongoose.Schema(
     lastDonationDate: { type: Date },
     txHash: { type: String }, // blockchain transaction hash
     isAvailable: { type: Boolean, default: true },
+    latitude: { type: Number },
+    longitude: { type: Number },
   },
   { timestamps: true }
 );

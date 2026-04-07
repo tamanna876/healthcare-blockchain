@@ -1,9 +1,14 @@
 import { useState } from 'react'
 import { toast } from 'react-hot-toast'
-import { addMedicineToInventory, verifyMedicine } from '../services/api.js'
+import {
+  addMedicineToInventory,
+  verifyMedicine,
+} from '../services/api.js'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import Card from '../components/ui/Card.jsx'
 import PageHeader from '../components/ui/PageHeader.jsx'
+import TransactionStatusCard from '../components/tx/TransactionStatusCard.jsx'
+import { useTrackedTransaction } from '../hooks/useTrackedTransaction.js'
 
 export default function MedicineVerification() {
   const [medicineId, setMedicineId] = useState('')
@@ -13,6 +18,8 @@ export default function MedicineVerification() {
   const [result, setResult] = useState(null)
   const [notice, setNotice] = useState(null)
   const [busy, setBusy] = useState(false)
+  const { transaction, executeTransaction, markTransactionFailed } = useTrackedTransaction()
+
 
   const allowedRoles = ['Pharmacy', 'Doctor', 'Hospital', 'Admin']
   if (!allowedRoles.includes(role)) {
@@ -59,20 +66,44 @@ export default function MedicineVerification() {
       return
     }
     setBusy(true)
-    await addMedicineToInventory({
-      medicineId: medicineId.trim(),
-      name: name.trim(),
-      manufacturer: role === 'Pharmacy' ? 'Pharmacy Center' : 'Hospital Supply',
-      batchNumber: batch.trim(),
-    })
-    const message = 'Medicine added to registry.'
-    setNotice({ type: 'success', message })
-    toast.success(message)
-    setMedicineId('')
-    setName('')
-    setBatch('')
-    setResult(null)
-    setBusy(false)
+
+    try {
+      const payload = {
+        medicineId: medicineId.trim(),
+        name: name.trim(),
+        manufacturer: role === 'Pharmacy' ? 'Pharmacy Center' : 'Hospital Supply',
+        batchNumber: batch.trim(),
+      }
+
+      await executeTransaction({
+        txType: 'medicine-register',
+        payload,
+        submit: addMedicineToInventory,
+        getTxHash: (response) => response?.txHash || response?.transactionHash || null,
+      })
+
+      const message = 'Medicine added to registry.'
+      setNotice({ type: 'success', message })
+      toast.success(message)
+      setMedicineId('')
+      setName('')
+      setBatch('')
+      setResult(null)
+    } catch (error) {
+      setNotice({ type: 'error', message: error.message || 'Failed to add medicine to registry.' })
+      toast.error(error.message || 'Failed to add medicine to registry.')
+      markTransactionFailed(error.message || 'Registration failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleRetry = async () => {
+    if (!transaction?.payload) return
+    setMedicineId(transaction.payload.medicineId)
+    setName(transaction.payload.name)
+    setBatch(transaction.payload.batchNumber)
+    await handleAdd({ preventDefault() {} })
   }
 
   return (
@@ -191,6 +222,8 @@ export default function MedicineVerification() {
           </form>
         </Card>
       </div>
+
+      <TransactionStatusCard transaction={transaction} onRetry={handleRetry} />
     </div>
   )
 }

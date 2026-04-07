@@ -1,9 +1,12 @@
 import { Link } from 'react-router-dom'
 import { Bars3Icon, BoltIcon } from '@heroicons/react/24/outline'
 import { useAuth } from '../../contexts/AuthContext.jsx'
+import NotificationCenter from '../notifications/NotificationCenter.jsx'
+import { canAccessInnovation } from '../../constants/innovationAccess.js'
 
 export default function Navbar({ onOpenSidebar }) {
   const { role, email } = useAuth()
+  const showInnovationShortcut = canAccessInnovation(role)
 
   return (
     <header className="sticky top-0 z-20 flex h-20 items-center justify-between gap-4 border-b border-white/70 bg-white/70 px-4 backdrop-blur-xl lg:px-6">
@@ -28,6 +31,8 @@ export default function Navbar({ onOpenSidebar }) {
       </div>
 
       <div className="flex items-center gap-4">
+        <NotificationCenter />
+
         <div className="brand-chip hidden md:inline-flex">
           <BoltIcon className="h-4 w-4 text-brand-600" />
           Live care workspace
@@ -45,6 +50,15 @@ export default function Navbar({ onOpenSidebar }) {
         >
           Profile
         </Link>
+
+        {showInnovationShortcut ? (
+          <Link
+            to="/innovation-hub"
+            className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+          >
+            Innovation
+          </Link>
+        ) : null}
       </div>
     </header>
   )

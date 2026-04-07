@@ -122,12 +122,72 @@ const MEDICINE_VERIFICATION_ABI = [
 ];
 
 let provider, wallet, contracts;
+let listenersInitialized = false;
+
+async function isRpcEndpointReachable(rpcUrl) {
+  if (!rpcUrl || typeof rpcUrl !== 'string') return false;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 1500);
+
+  try {
+    const response = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_chainId',
+        params: [],
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) return false;
+    const payload = await response.json();
+    return typeof payload?.result === 'string';
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function hasValidPrivateKey(privateKey) {
+  if (!privateKey || typeof privateKey !== 'string') return false;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(privateKey)) return false;
+  if (/^0x0{64}$/.test(privateKey)) return false;
+
+  try {
+    // Wallet constructor validates secp256k1 key range.
+    // eslint-disable-next-line no-new
+    new ethers.Wallet(privateKey);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getProvider() {
+  if (provider) return provider;
+
+  if (!process.env.RPC_URL) {
+    throw new Error('RPC_URL is missing');
+  }
+
+  provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+  return provider;
+}
 
 function getBlockchainClients() {
   if (contracts) return contracts;
 
-  provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
-  wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+  const activeProvider = getProvider();
+  if (!hasValidPrivateKey(process.env.PRIVATE_KEY)) {
+    throw new Error('PRIVATE_KEY is not configured with a valid non-zero key');
+  }
+
+  wallet = new ethers.Wallet(process.env.PRIVATE_KEY, activeProvider);
 
   contracts = {
     medicalRecords: new ethers.Contract(
@@ -155,4 +215,34 @@ function getBlockchainClients() {
   return contracts;
 }
 
-module.exports = { getBlockchainClients };
+function initializeBlockchainEventListeners() {
+  if (listenersInitialized) return;
+
+  if (!process.env.RPC_URL) {
+    console.log('[Blockchain] Listener skipped: RPC_URL is not configured.');
+    listenersInitialized = true;
+    return;
+  }
+
+  listenersInitialized = true;
+
+  void (async () => {
+    const reachable = await isRpcEndpointReachable(process.env.RPC_URL);
+    if (!reachable) {
+      console.log('[Blockchain] Listener skipped: RPC endpoint is unreachable.');
+      return;
+    }
+
+    try {
+      const activeProvider = getProvider();
+      activeProvider.on('block', (blockNumber) => {
+        console.log(`[Blockchain] New block observed: ${blockNumber}`);
+      });
+      console.log('[Blockchain] Listener initialized (provider-only mode).');
+    } catch (error) {
+      console.warn('[Blockchain] Listener initialization skipped:', error.message);
+    }
+  })();
+}
+
+module.exports = { getBlockchainClients, initializeBlockchainEventListeners };

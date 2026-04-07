@@ -32,11 +32,16 @@ import {
   deleteWomenHealthReminder,
   getBloodDonors,
   getClinicalTrials,
+  getAdminMetrics,
+  getAuditLogs,
+  getObservability,
+  getNotificationPreferences,
   getHealthEducationAnalytics,
   getHealthEducationSupportPrograms,
   getOrganDonors,
   getWomenHealthReminders,
   saveHealthEducationSupportProgram,
+  updateNotificationPreferences,
   updateHealthEducationSupportProgram,
   updateWomenHealthReminder,
 } from '../services/api.js'
@@ -120,6 +125,10 @@ export default function AdminPanel() {
   const [supportPrograms, setSupportPrograms] = useState([])
   const [womenReminders, setWomenReminders] = useState([])
   const [educationAnalytics, setEducationAnalytics] = useState(null)
+  const [systemMetrics, setSystemMetrics] = useState(null)
+  const [observability, setObservability] = useState(null)
+  const [auditLogs, setAuditLogs] = useState([])
+  const [notificationPrefs, setNotificationPrefs] = useState(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
@@ -163,12 +172,23 @@ export default function AdminPanel() {
         getHealthEducationAnalytics(),
       ])
 
+      const [metrics, logs, obsv, prefs] = await Promise.all([
+        getAdminMetrics().catch(() => null),
+        getAuditLogs(8).catch(() => ({ logs: [] })),
+        getObservability().catch(() => null),
+        getNotificationPreferences().catch(() => null),
+      ])
+
       setBloodDonors(bloodData)
       setOrganDonors(organData)
       setClinicalTrials(trialData)
       setSupportPrograms(programs)
       setWomenReminders(reminders)
       setEducationAnalytics(analytics)
+      setSystemMetrics(metrics)
+      setObservability(obsv)
+      setNotificationPrefs(prefs?.notificationPreferences || null)
+      setAuditLogs(logs?.logs || [])
       setLastUpdatedAt(new Date().toISOString())
     } catch (error) {
       setErrorMessage(error.message || 'Unable to load admin data right now.')
@@ -339,6 +359,19 @@ export default function AdminPanel() {
         .includes(query),
     )
   }, [reminderQuery, womenReminders])
+
+  const toggleNotificationPreference = useCallback(async (key) => {
+    if (!notificationPrefs) return
+    const next = { ...notificationPrefs, [key]: !notificationPrefs[key] }
+    setNotificationPrefs(next)
+    try {
+      await updateNotificationPreferences({ [key]: next[key] })
+      toast.success('Preference updated')
+    } catch (error) {
+      setNotificationPrefs(notificationPrefs)
+      toast.error(error.message || 'Unable to update preference')
+    }
+  }, [notificationPrefs])
 
   if (role !== 'Admin') {
     return (
@@ -598,6 +631,101 @@ export default function AdminPanel() {
               )}
             </div>
           </div>
+        </Card>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[1fr,1.2fr]">
+        <Card title="Backend system metrics" description="Direct counts from the admin API.">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {[
+              ['Users', systemMetrics?.users ?? '—'],
+              ['Blood donors', systemMetrics?.bloodDonors ?? bloodDonors.length],
+              ['Organ donors', systemMetrics?.organDonors ?? organDonors.length],
+              ['Medicines', systemMetrics?.medicines ?? '—'],
+              ['Trials', systemMetrics?.trials ?? clinicalTrials.length],
+              ['Audit logs', systemMetrics?.auditLogs ?? auditLogs.length],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-[20px] border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">{label}</p>
+                <p className="mt-3 font-display text-2xl font-semibold text-slate-900">{value}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card title="Recent audit trail" description="Latest sensitive actions across the platform.">
+          <div className="space-y-3">
+            {auditLogs.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                No audit records yet.
+              </div>
+            ) : (
+              auditLogs.map((entry) => (
+                <div key={entry._id} className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 shadow-sm shadow-slate-200/40">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-display text-sm font-semibold text-slate-900">{entry.action}</p>
+                    <p className="text-xs text-slate-500">{formatDateTime(entry.createdAt)}</p>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {entry.entityType}
+                    {entry.entityId ? ` · ${entry.entityId}` : ''}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        </Card>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-2">
+        <Card title="API observability" description="Latency, error rate, auth failures and hot routes.">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {[
+              ['Avg latency', `${observability?.apiLatencyMs ?? 0} ms`],
+              ['Error rate', `${observability?.apiErrorRate ?? 0}%`],
+              ['Auth failures', observability?.authFailures ?? 0],
+              ['Requests total', observability?.requestsTotal ?? 0],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-[20px] border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">{label}</p>
+                <p className="mt-3 font-display text-2xl font-semibold text-slate-900">{value}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 space-y-2">
+            {(observability?.topRoutes || []).slice(0, 5).map((route) => (
+              <div key={route.route} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+                {route.route} · {route.requests} req · {route.avgLatencyMs} ms · {route.errors} err
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card title="Notification preferences" description="Control email/SMS/in-app delivery for critical flows.">
+          {!notificationPrefs ? (
+            <p className="text-sm text-slate-500">Preferences unavailable.</p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                ['email', 'Email'],
+                ['sms', 'SMS'],
+                ['inApp', 'In-App'],
+                ['bloodDonationAlerts', 'Blood alerts'],
+                ['organDonationAlerts', 'Organ alerts'],
+                ['emergencyAlerts', 'Emergency alerts'],
+                ['certificateAlerts', 'Certificate alerts'],
+              ].map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => toggleNotificationPreference(key)}
+                  className={`rounded-xl border px-3 py-2 text-left text-sm transition ${notificationPrefs[key] ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-700'}`}
+                >
+                  {label}: {notificationPrefs[key] ? 'On' : 'Off'}
+                </button>
+              ))}
+            </div>
+          )}
         </Card>
       </section>
 

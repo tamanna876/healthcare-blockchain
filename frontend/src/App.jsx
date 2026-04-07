@@ -2,10 +2,12 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider } from './contexts/AuthContext.jsx'
+import { useAuth } from './contexts/AuthContext.jsx'
 import ProtectedLayout from './components/layout/ProtectedLayout.jsx'
 import Home from './pages/Home.jsx'
 import Login from './pages/Login.jsx'
 import Spinner from './components/ui/Spinner.jsx'
+import { canAccessInnovation } from './constants/innovationAccess.js'
 
 // Route-based code splitting: each page loads as a separate chunk.
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'))
@@ -21,6 +23,7 @@ const DigitalHealthWallet = lazy(() => import('./pages/DigitalHealthWallet.jsx')
 const HealthGoals = lazy(() => import('./pages/HealthGoals.jsx'))
 const FamilyAccess = lazy(() => import('./pages/FamilyAccess.jsx'))
 const HealthEducationHub = lazy(() => import('./pages/HealthEducationHub.jsx'))
+const InnovationHub = lazy(() => import('./pages/InnovationHub.jsx'))
 const Profile = lazy(() => import('./pages/Profile.jsx'))
 const AdminPanel = lazy(() => import('./pages/AdminPanel.jsx'))
 const NotFound = lazy(() => import('./pages/NotFound.jsx'))
@@ -31,6 +34,20 @@ function PageLoader() {
       <Spinner />
     </div>
   )
+}
+
+function InnovationRouteGuard() {
+  const { role, loading } = useAuth()
+
+  if (loading) {
+    return <PageLoader />
+  }
+
+  if (!canAccessInnovation(role)) {
+    return <Navigate to="/dashboard" replace />
+  }
+
+  return <InnovationHub />
 }
 
 function App() {
@@ -56,6 +73,7 @@ function App() {
               <Route path="/health-goals" element={<HealthGoals />} />
               <Route path="/family-access" element={<FamilyAccess />} />
               <Route path="/health-education" element={<HealthEducationHub />} />
+              <Route path="/innovation-hub" element={<InnovationRouteGuard />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/admin" element={<AdminPanel />} />
             </Route>

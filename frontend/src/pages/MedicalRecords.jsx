@@ -1,18 +1,24 @@
 import { useState } from 'react'
 import { toast } from 'react-hot-toast'
-import { addMedicalRecord, getMedicalRecords } from '../services/api.js'
+import {
+  addMedicalRecord,
+  getMedicalRecords,
+} from '../services/api.js'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import Card from '../components/ui/Card.jsx'
 import PageHeader from '../components/ui/PageHeader.jsx'
 import Spinner from '../components/ui/Spinner.jsx'
+import TransactionStatusCard from '../components/tx/TransactionStatusCard.jsx'
+import { useTrackedTransaction } from '../hooks/useTrackedTransaction.js'
 
 export default function MedicalRecords() {
-  const { role, hasRole } = useAuth()
+  const { hasRole } = useAuth()
   const [patientAddress, setPatientAddress] = useState('')
   const [recordId, setRecordId] = useState('')
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(false)
   const [notice, setNotice] = useState(null)
+  const { transaction, executeTransaction, markTransactionFailed } = useTrackedTransaction()
 
   const handleAdd = async (event) => {
     event.preventDefault()
@@ -20,16 +26,30 @@ export default function MedicalRecords() {
     setLoading(true)
 
     try {
-      await addMedicalRecord(patientAddress, recordId)
+      await executeTransaction({
+        txType: 'medical-record-add',
+        payload: { patientAddress, recordId },
+        submit: ({ patientAddress: patient, recordId: ipfsHash }) => addMedicalRecord(patient, ipfsHash),
+      })
+
       toast.success('Record added successfully')
       setRecordId('')
       await handleFetch(event, true)
     } catch (error) {
       toast.error(error.message)
       setNotice({ type: 'error', message: error.message })
+      markTransactionFailed(error.message)
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleRetry = async () => {
+    if (!transaction?.payload) return
+
+    setPatientAddress(transaction.payload.patientAddress)
+    setRecordId(transaction.payload.recordId)
+    await handleAdd({ preventDefault() {} })
   }
 
   const handleFetch = async (event, skipEventPrevent) => {
@@ -183,6 +203,8 @@ export default function MedicalRecords() {
           </div>
         </Card>
       </div>
+
+      <TransactionStatusCard transaction={transaction} onRetry={handleRetry} />
     </div>
   )
 }

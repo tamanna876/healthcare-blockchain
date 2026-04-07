@@ -17,6 +17,11 @@ const prescriptionSchema = new mongoose.Schema(
       enum: ['Active', 'Requested', 'Fulfilled', 'Expired', 'Cancelled'],
       default: 'Active',
     },
+    doctorSignature: { type: String, trim: true },
+    signatureIssuedAt: { type: Date, default: null },
+    dispenseLogHash: { type: String, trim: true },
+    lastDispensedAt: { type: Date, default: null },
+    refillBlocked: { type: Boolean, default: false },
     notes: { type: String, trim: true },
   },
   { timestamps: true }

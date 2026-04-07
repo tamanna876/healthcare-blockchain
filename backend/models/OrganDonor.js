@@ -18,6 +18,8 @@ const organDonorSchema = new mongoose.Schema(
     email: { type: String, trim: true },
     txHash: { type: String }, // blockchain transaction hash
     isActive: { type: Boolean, default: true },
+    latitude: { type: Number },
+    longitude: { type: Number },
   },
   { timestamps: true }
 );
