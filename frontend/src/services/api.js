@@ -48,6 +48,28 @@ export function clearSessionTokens() {
   removeRefreshToken()
 }
 
+function handleAuthFailure() {
+  clearSessionTokens()
+  if (typeof window !== 'undefined' && window.location && window.location.pathname !== '/login') {
+    window.location.href = '/login'
+  }
+}
+
+function normalizeAuthErrorMessage(message) {
+  const value = String(message || '').toLowerCase()
+  if (
+    value.includes('not authorised') ||
+    value.includes('no token') ||
+    value.includes('invalid or expired token') ||
+    value.includes('refresh failed') ||
+    value.includes('refresh token')
+  ) {
+    return 'Session expired. Please login again.'
+  }
+
+  return message
+}
+
 async function refreshAccessToken() {
   if (!pendingRefreshPromise) {
     pendingRefreshPromise = (async () => {
@@ -82,8 +104,24 @@ async function refreshAccessToken() {
 
 async function request(path, { method = 'GET', body, auth = true, ...options } = {}) {
   const headers = { 'Content-Type': 'application/json', ...options.headers }
+
   if (auth) {
-    const token = getToken()
+    let token = getToken()
+
+    // Recover session automatically when the in-memory/local access token is missing
+    // but a refresh cookie still exists.
+    if (!token && !path.startsWith('/api/auth/')) {
+      const refreshed = await refreshAccessToken()
+      if (refreshed) {
+        token = getToken()
+      }
+    }
+
+    if (!token && !path.startsWith('/api/auth/')) {
+      handleAuthFailure()
+      throw new Error('Session expired. Please login again.')
+    }
+
     if (token) headers['Authorization'] = `Bearer ${token}`
   }
 
@@ -106,12 +144,22 @@ async function request(path, { method = 'GET', body, auth = true, ...options } =
           headers: options.headers,
         })
       }
+
+      handleAuthFailure()
+      throw new Error('Session expired. Please login again.')
     }
 
     if (!res.ok) {
       const text = await res.text()
-      try { throw new Error(JSON.parse(text).message || `API error ${res.status}`) }
-      catch { throw new Error(`API error ${res.status}: ${text}`) }
+      let serverMessage = ''
+      try {
+        const parsed = JSON.parse(text)
+        serverMessage = parsed?.message || ''
+      } catch {
+        serverMessage = ''
+      }
+
+      throw new Error(normalizeAuthErrorMessage(serverMessage || `API error ${res.status}: ${text}`))
     }
 
     return res.status === 204 ? null : res.json()

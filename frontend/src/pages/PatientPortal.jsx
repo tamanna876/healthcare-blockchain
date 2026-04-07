@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import { getMedicalRecords, getBloodDonors, getOrganDonors, getAppointments, saveAppointment, getPrescriptions, requestPrescriptionRefill } from '../services/api.js'
 import { useAuth } from '../contexts/AuthContext.jsx'
@@ -18,7 +18,9 @@ import {
 } from '@heroicons/react/24/outline'
 
 export default function PatientPortal() {
-  const { role, email } = useAuth()
+  const { role, email, walletAddress } = useAuth()
+  const didNotifyAuthError = useRef(false)
+  const didNotifyDemoMode = useRef(false)
   const [records, setRecords] = useState([])
   const [bloodDonations, setBloodDonations] = useState([])
   const [organDonations, setOrganDonations] = useState([])
@@ -63,39 +65,78 @@ export default function PatientPortal() {
 
   useEffect(() => {
     const fetchData = async () => {
-      try {
-        const medicalData = await getMedicalRecords(email)
-        // For demo purposes, if no real records, show mock data
-        if (medicalData.length === 0) {
-          setRecords([
-            {
-              id: 1,
-              diagnosis: 'Annual Physical Examination',
-              treatment: 'Routine checkup - all vitals normal',
-              date: '2024-03-10',
-              doctor: 'Dr. Johnson'
-            },
-            {
-              id: 2,
-              diagnosis: 'Blood Pressure Check',
-              treatment: 'Hypertension management - medication prescribed',
-              date: '2024-02-15',
-              doctor: 'Dr. Smith'
-            }
-          ])
-        } else {
-          // Transform blockchain data to readable format
-          const transformed = medicalData.map((record, index) => ({
-            id: index + 1,
-            diagnosis: `Medical Record ${index + 1}`,
-            treatment: `IPFS Hash: ${record.ipfsHash.substring(0, 20)}...`,
-            date: new Date(Number(record.timestamp) * 1000).toISOString().split('T')[0],
-            doctor: `${record.doctor.substring(0, 10)}...`
-          }))
-          setRecords(transformed)
+      const demoRecords = [
+        {
+          id: 1,
+          diagnosis: 'General Wellness Checkup',
+          treatment: 'Vitals normal, advised hydration and light exercise',
+          date: '2026-03-12',
+          doctor: 'Dr. Mehta'
+        },
+        {
+          id: 2,
+          diagnosis: 'Seasonal Allergy Review',
+          treatment: 'Antihistamine prescribed for 7 days',
+          date: '2026-02-04',
+          doctor: 'Dr. Khan'
         }
+      ]
 
-        // Load donation history
+      const demoBloodDonations = [
+        { id: 'bd-demo-1', bloodGroup: 'O+', location: 'City Blood Bank', registeredAt: '2026-01-18' },
+        { id: 'bd-demo-2', bloodGroup: 'A+', location: 'Metro Health Center', registeredAt: '2025-11-27' },
+      ]
+
+      const demoOrganDonations = [
+        { id: 'od-demo-1', organType: 'Kidney', location: 'Care Hospital', registeredAt: '2025-10-10' },
+      ]
+
+      const demoAppointments = [
+        { id: 'apt-demo-1', patientEmail: email, doctor: 'Dr. Rao', date: '2026-04-12', time: '11:30', status: 'Scheduled' },
+      ]
+
+      const demoPrescriptions = [
+        { id: 'rx-demo-1', patientEmail: email, medication: 'Cetirizine', dosage: '10mg', pharmacy: 'City Pharmacy', status: 'Active' },
+      ]
+
+      try {
+        const patientAddress = walletAddress
+        if (!patientAddress) {
+          setRecords(demoRecords)
+        } else {
+          const medicalData = await getMedicalRecords(patientAddress)
+          if (medicalData.length === 0) {
+            setRecords(demoRecords)
+          } else {
+            const transformed = medicalData.map((record, index) => ({
+              id: index + 1,
+              diagnosis: `Medical Record ${index + 1}`,
+              treatment: `IPFS Hash: ${record.ipfsHash.substring(0, 20)}...`,
+              date: new Date(Number(record.timestamp) * 1000).toISOString().split('T')[0],
+              doctor: `${record.doctor.substring(0, 10)}...`
+            }))
+            setRecords(transformed)
+          }
+        }
+      } catch (error) {
+        if (String(error?.message || '').includes('401') || String(error?.message || '').includes('Not authorised')) {
+          setRecords([])
+          if (!didNotifyAuthError.current) {
+            didNotifyAuthError.current = true
+            toast.error('Session expired. Please login again.')
+          }
+          setLoading(false)
+          return
+        } else {
+          setRecords(demoRecords)
+          if (!didNotifyDemoMode.current) {
+            didNotifyDemoMode.current = true
+            toast('Demo mode active for portal data', { icon: 'ℹ️' })
+          }
+        }
+      }
+
+      try {
         const [bloodData, organData, appointmentData, prescriptionData] = await Promise.all([
           getBloodDonors(),
           getOrganDonors(),
@@ -107,36 +148,40 @@ export default function PatientPortal() {
         setOrganDonations(organData)
         setAppointments(appointmentData.filter((a) => a.patientEmail === email))
         setPrescriptions(prescriptionData.filter((p) => p.patientEmail === email))
-
-        // Load medication reminders from localStorage
-        const savedReminders = localStorage.getItem(`medicationReminders_${email}`)
-        if (savedReminders) {
-          setMedicationReminders(JSON.parse(savedReminders))
-        }
-
-        // Load health history from localStorage
-        const savedHealthHistory = localStorage.getItem(`healthHistory_${email}`)
-        if (savedHealthHistory) {
-          setHealthHistory(JSON.parse(savedHealthHistory))
-        }
-      } catch {
-        // Fallback to mock data on error
-        setRecords([
-          {
-            id: 1,
-            diagnosis: 'Annual Physical Examination',
-            treatment: 'Routine checkup - all vitals normal',
-            date: '2024-03-10',
-            doctor: 'Dr. Johnson'
+      } catch (error) {
+        if (String(error?.message || '').includes('401') || String(error?.message || '').includes('Not authorised')) {
+          if (!didNotifyAuthError.current) {
+            didNotifyAuthError.current = true
+            toast.error('Session expired. Please login again.')
           }
-        ])
-        toast.error('Failed to load medical records, showing demo data')
-      } finally {
-        setLoading(false)
+          setLoading(false)
+          return
+        } else {
+          setBloodDonations(demoBloodDonations)
+          setOrganDonations(demoOrganDonations)
+          setAppointments(demoAppointments)
+          setPrescriptions(demoPrescriptions)
+          if (!didNotifyDemoMode.current) {
+            didNotifyDemoMode.current = true
+            toast('Demo mode active for portal data', { icon: 'ℹ️' })
+          }
+        }
       }
+
+      const savedReminders = localStorage.getItem(`medicationReminders_${email}`)
+      if (savedReminders) {
+        setMedicationReminders(JSON.parse(savedReminders))
+      }
+
+      const savedHealthHistory = localStorage.getItem(`healthHistory_${email}`)
+      if (savedHealthHistory) {
+        setHealthHistory(JSON.parse(savedHealthHistory))
+      }
+
+      setLoading(false)
     }
     fetchData()
-  }, [email])
+  }, [email, walletAddress])
 
   if (role !== 'Patient') {
     return (
@@ -202,8 +247,12 @@ export default function PatientPortal() {
       return
     }
 
+    const nextReminderId = medicationReminders.length > 0
+      ? Math.max(...medicationReminders.map((reminder) => Number(reminder.id) || 0)) + 1
+      : 1
+
     const newReminder = {
-      id: Date.now(),
+      id: nextReminderId,
       ...reminderForm,
       createdAt: new Date().toISOString(),
       enabled: true
