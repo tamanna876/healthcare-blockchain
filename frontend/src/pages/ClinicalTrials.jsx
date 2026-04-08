@@ -5,6 +5,21 @@ import { useAuth } from '../contexts/AuthContext.jsx'
 import Card from '../components/ui/Card.jsx'
 import PageHeader from '../components/ui/PageHeader.jsx'
 
+const DEMO_TRIALS = [
+  {
+    id: 'trial-demo-1',
+    trialName: 'Phase 2 Vaccine Safety Review',
+    researcher: 'Dr. Elena Morris',
+    createdAt: '2026-03-18T09:30:00.000Z',
+  },
+  {
+    id: 'trial-demo-2',
+    trialName: 'Cardiac Monitoring Device Pilot',
+    researcher: 'Dr. Arjun Patel',
+    createdAt: '2026-02-26T14:15:00.000Z',
+  },
+]
+
 export default function ClinicalTrials() {
   const { role } = useAuth()
   const [trialName, setTrialName] = useState('')
@@ -19,7 +34,14 @@ export default function ClinicalTrials() {
   useEffect(() => {
     async function loadTrials() {
       try {
-        setTrials(await getClinicalTrials())
+        const data = await getClinicalTrials()
+        setTrials(Array.isArray(data) && data.length > 0 ? data : DEMO_TRIALS)
+        if (!Array.isArray(data) || data.length === 0) {
+          toast('Demo clinical trial data loaded', { icon: 'ℹ️' })
+        }
+      } catch {
+        setTrials(DEMO_TRIALS)
+        toast('Demo clinical trial data loaded', { icon: 'ℹ️' })
       } finally {
         setLoading(false)
       }

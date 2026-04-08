@@ -83,16 +83,28 @@ const quickActions = [
   },
 ]
 
-const apiChecks = [
-  { label: 'Backend health', url: 'http://localhost:5000/health' },
-  { label: 'Frontend app', url: 'http://localhost:5173/' },
-  { label: 'Token holders API', url: 'http://localhost:5000/api/tokens/holders' },
+const demoShortcuts = [
+  {
+    label: 'Admin panel',
+    detail: 'Review donors, trials, reminders, and support program analytics in one place.',
+    to: '/admin',
+  },
+  {
+    label: 'Doctor center',
+    detail: 'Confirm appointments and keep clinician workflows moving.',
+    to: '/doctor-center',
+  },
+  {
+    label: 'Pharmacy center',
+    detail: 'Open refill requests and prescription fulfillment actions.',
+    to: '/pharmacy-center',
+  },
 ]
 
-const dockerSteps = [
-  'Copy .env.example to .env and set blockchain and database values.',
-  'Run docker-compose up -d from the project root.',
-  'Check /health on each backend node and confirm the Nginx proxy.',
+const demoHighlights = [
+  'Admin users can inspect live counts for donors, trials, and reminder schedules.',
+  'Doctors can move from appointments into medical record and trial workflows.',
+  'Pharmacy users get a dedicated queue for refill approvals and status updates.',
 ]
 
 const contractRoutes = [
@@ -102,12 +114,10 @@ const contractRoutes = [
   { label: 'Medicine Verification', to: '/medicine-verification', note: 'Verify inventory and authenticity.' },
 ]
 
-const productionChecklist = [
-  'Set RPC_URL, PRIVATE_KEY, and contract addresses in .env.',
-  'Run npm install in backend and frontend before starting services.',
-  'Test /health and API routes before opening the dashboard.',
-  'Use docker-compose for multi-node or production-style deployment.',
-  'Review the quick-start and deployment guide before launch.',
+const rolePreview = [
+  'Patient portal demo data covers records, blood donation, organ donation, appointments, and prescriptions.',
+  'Clinical trials include sample uploads so the module is never blank during a demo.',
+  'The home page now points to the main role workspaces instead of raw localhost endpoints.',
 ]
 
 const moduleNavigation = [
@@ -263,11 +273,11 @@ export default function Home() {
             <div className="max-w-2xl">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">Quick actions</p>
               <h2 className="font-display mt-3 text-3xl font-semibold text-slate-900">
-                The 1-5 path for setup, deployment, and the main app flows
+                Jump straight into the role-based demo workspaces
               </h2>
               <p className="mt-3 text-sm leading-7 text-slate-600">
-                Use this strip to move from API checks to multi-node deployment, contracts, UI modules, and the final
-                production-ready handoff.
+                These shortcuts take you to the most useful screens for presenting the app without exposing raw
+                endpoints or setup details.
               </p>
             </div>
           </div>
@@ -294,43 +304,34 @@ export default function Home() {
           <div className="brand-glass rounded-[34px] px-7 py-8 sm:px-10">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">API test button</p>
-                <h2 className="font-display mt-3 text-3xl font-semibold text-slate-900">Quick backend verification</h2>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">Demo shortcuts</p>
+                <h2 className="font-display mt-3 text-3xl font-semibold text-slate-900">Open the main role workspaces</h2>
                 <p className="mt-3 text-sm leading-7 text-slate-600">
-                  Use this to confirm the backend is live before you move to the dashboard or deployment steps.
+                  These links go straight to the most useful parts of the app for demos and walkthroughs.
                 </p>
               </div>
-
-              <button
-                type="button"
-                onClick={() => openExternal('http://localhost:5000/health')}
-                className="inline-flex items-center justify-center rounded-2xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-700"
-              >
-                Open API health check
-              </button>
             </div>
 
             <div className="mt-6 grid gap-3 md:grid-cols-3">
-              {apiChecks.map((item) => (
-                <button
+              {demoShortcuts.map((item) => (
+                <Link
                   key={item.label}
-                  type="button"
-                  onClick={() => openExternal(item.url)}
+                  to={item.to}
                   className="rounded-2xl border border-slate-200 bg-white/95 px-4 py-4 text-left shadow-sm shadow-slate-200/40 transition hover:-translate-y-1 hover:shadow-lg"
                 >
                   <p className="font-display text-base font-semibold text-slate-900">{item.label}</p>
-                  <p className="mt-2 text-xs text-slate-500">{item.url}</p>
-                </button>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">{item.detail}</p>
+                </Link>
               ))}
             </div>
           </div>
 
           <div className="brand-glass rounded-[34px] px-7 py-8 sm:px-10">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">Docker multi-node start guide</p>
-            <h2 className="font-display mt-3 text-3xl font-semibold text-slate-900">Production-style startup flow</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">Demo coverage</p>
+            <h2 className="font-display mt-3 text-3xl font-semibold text-slate-900">Sample data already wired in</h2>
 
             <div className="mt-6 space-y-3">
-              {dockerSteps.map((step, index) => (
+              {demoHighlights.map((step, index) => (
                 <div key={step} className="flex items-start gap-3 rounded-2xl bg-white/90 px-4 py-3 shadow-sm shadow-slate-200/40">
                   <span className="font-display text-sm font-semibold text-brand-700">0{index + 1}</span>
                   <p className="text-sm leading-6 text-slate-600">{step}</p>
@@ -339,18 +340,17 @@ export default function Home() {
             </div>
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <button
-                type="button"
-                onClick={() => copyText('docker-compose up -d')}
-                className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-              >
-                Copy docker command
-              </button>
               <Link
                 to="/admin"
+                className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+              >
+                Open admin panel
+              </Link>
+              <Link
+                to="/clinical-trials"
                 className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
               >
-                Open admin guide
+                View trial demo
               </Link>
             </div>
           </div>
@@ -376,11 +376,11 @@ export default function Home() {
           </div>
 
           <div className="brand-glass rounded-[34px] px-7 py-8 sm:px-10">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">Production setup checklist</p>
-            <h2 className="font-display mt-3 text-3xl font-semibold text-slate-900">Go-live readiness</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">Role preview</p>
+            <h2 className="font-display mt-3 text-3xl font-semibold text-slate-900">What each role gets</h2>
 
             <div className="mt-6 space-y-3">
-              {productionChecklist.map((item) => (
+              {rolePreview.map((item) => (
                 <div key={item} className="flex items-start gap-3 rounded-2xl bg-white/90 px-4 py-3 shadow-sm shadow-slate-200/40">
                   <CheckBadgeIcon className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
                   <p className="text-sm leading-6 text-slate-600">{item}</p>
